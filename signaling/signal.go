@@ -70,6 +70,11 @@ func SendBroadcast(msg Message) {
 }
 
 func main() {
+        // File server to serve html
+        fs := http.FileServer(http.Dir("."))
+        http.Handle("/", fs)
+        log.Println("Started file server")
+
         // Create websocket route to callback
         http.HandleFunc("/ws", handleConn)
 

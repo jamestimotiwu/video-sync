@@ -6,7 +6,7 @@ const port = "9000";
 
 function initWebSocket() {
         // Create websocket
-        ws = new WebSocket('ws://' + location.hostname +  '/ws');
+        ws = new WebSocket('ws://' + location.host +  '/ws');
 
         // Listen to websocket messages
         ws.addEventListener('message', (e) => {
