@@ -17,7 +17,6 @@ const (
         port = 9000
 )
 
-
 type Message struct {
         UserId string `json:"user_id"`
         Message string `json:"message"`
@@ -71,7 +70,7 @@ func SendBroadcast(msg Message) {
 
 func main() {
         // File server to serve html
-        fs := http.FileServer(http.Dir("."))
+        fs := http.FileServer(http.Dir("./static"))
         http.Handle("/", fs)
         log.Println("Started file server")
 
