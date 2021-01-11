@@ -4,21 +4,30 @@ import (
         "log"
         "net/http"
         "github.com/gorilla/websocket"
+        "github.com/speps/go-hashids"
         "strconv"
+        //"encoding/json"
 )
 
 var (
-        clients = make(map[*websocket.Conn]bool)
-        broadcast = make(chan Message)
+        //clients = make(map[*websocket.Conn]bool)
+        //broadcast = make(chan Message)
         upgrader = websocket.Upgrader{}
         clientIdCount = 0
+        sessionIdCount = 0
         peers = make(map[int]*Peer)
+        sessions = make(map[string]*SharedSession)
 )
 
 const (
         port = 9000
 )
 
+type SharedSession struct {
+        Id string
+        Peers []int
+        Cap int
+}
 
 type Peer struct {
         Id int
@@ -28,11 +37,51 @@ type Peer struct {
         conn *websocket.Conn
 }
 
+/*
 type Message struct {
         Type string `json:"type"`
         Src int `json:"src"`
         Dest int `json:"dest"`
         Message string `json:"message"`
+}*/
+
+type TextMessage struct {
+        Src int `json:"src"`
+        Dest int `json:"dest"`
+        Message string `json:"message"`
+}
+
+type JoinResponse struct {
+        Id int `json:"id"`
+        SessionId string `json:"session_id"`
+        Peers []int `json:"peers"`
+}
+
+type Message struct {
+        Type string `json:"type"`
+        Data interface{} `json:"data"`
+}
+
+func getNextSessionId() string {
+        // TODO: lock protect
+        sessionIdCount += 1
+        hd := hashids.NewData()
+        hd.Salt = "sharedSession"
+        hd.MinLength = 30
+        h, _ := hashids.NewWithData(hd)
+        e, _ := h.Encode([]int{sessionIdCount})
+        return e
+}
+
+func NewSession(peerId int, capacity int) *SharedSession {
+        newPeers := []int{peerId}
+        newId := getNextSessionId()
+        sess := &SharedSession{
+                Id: newId,
+                Peers: newPeers,
+                Cap: capacity,
+        }
+        return sess
 }
 
 func NewPeer(conn *websocket.Conn) *Peer {
@@ -47,6 +96,75 @@ func NewPeer(conn *websocket.Conn) *Peer {
         return peer
 }
 
+func handleCreateSession(peerId int, msg Message) {
+        // TODO: Check if peer already in session
+        // TODO: Initialize new session obj, add to session map
+        sessionCap := 255
+        sess := NewSession(peerId, sessionCap)
+        sessions[sess.Id] = sess
+        log.Println("create session")
+        log.Println(sessions[sess.Id])
+
+        // Reply to session creation
+        newMsg := Message{
+                Type: "createResp",
+                Data: JoinResponse{
+                        Id: peerId,
+                        SessionId: sess.Id,
+                        Peers: []int{},
+                },
+        }
+        SendMessage(peerId, newMsg)
+}
+
+/* Join message:
+Type: join
+Src: peerId
+Dest: 0
+Message: sessionId
+*/
+func handleJoinSession(peerId int, msg Message) {
+        // Add peer to the other peer
+        //otherId := findOtherId(peerId)
+        // Send peer list in session
+        var peerList []int
+        // ok
+        log.Println(msg)
+        txtMsg := msg.Data.(map[string]interface{})
+        sessionId := txtMsg["message"].(string)
+        if sess, ok := sessions[sessionId]; ok {
+                peerList = sess.Peers
+        } else {
+                // Send message with failure
+                err := Message{
+                        Type: "error",
+                        Data: TextMessage{
+                                Src: -1,
+                                Dest: -1,
+                                Message: "error: sessionId dne",
+                        },
+                }
+                SendMessage(peerId, err)
+                return
+        }
+        //peersJson, _ := json.Marshal(peerList)
+        newMsg := Message{
+                Type: "joinResp",
+                Data: JoinResponse{
+                        Id: peerId,
+                        SessionId: sessionId,
+                        Peers: peerList,
+                },
+        }
+        SendMessage(peerId, newMsg)
+        // Add self to peer list
+        if sess, ok := sessions[sessionId]; ok {
+                log.Println("New join to session: " + sessionId)
+                sessions[sessionId].Peers = append(sess.Peers, peerId)
+        }
+        log.Println(sessions[sessionId])
+}
+
 func handleNewConn(w http.ResponseWriter, r *http.Request) {
         // Upgrade request to websocket
         ws, err := upgrader.Upgrade(w, r, nil)
@@ -57,8 +175,8 @@ func handleNewConn(w http.ResponseWriter, r *http.Request) {
         defer ws.Close()
 
         // Add ws client to client list
-        peer := NewPeer(ws)
         //clients[ws] = true
+        peer := NewPeer(ws)
         peers[peer.Id] = peer
 
         // Listen to messages
@@ -68,31 +186,20 @@ func handleNewConn(w http.ResponseWriter, r *http.Request) {
                 // If err client may have disconnected
                 if err != nil {
                         log.Println(err);
-                        delete(clients, ws)
+                        //delete(clients, ws)
+                        delete(peers, peer.Id)
                         break
                 }
 
                 switch msg.Type {
                 case "create":
-                        newMsg := Message{
-                                Type: "createResp",
-                                Src: peer.Id,
-                                Dest: 0,
-                                Message: "",
-                        }
-                        SendMessage(peer.Id, newMsg)
+                        handleCreateSession(peer.Id, msg)
                 case "join":
-                        // Add peer to the other peer
-                        otherId := findOtherId(peer.Id)
-                        newMsg := Message{
-                                Type: "joinResp",
-                                Src: peer.Id,
-                                Dest: otherId,
-                                Message: "",
-                        }
-                        SendMessage(peer.Id, newMsg)
+                        handleJoinSession(peer.Id, msg)
                 case "rtc":
-                        SendMessage(msg.Dest, msg)
+                        // ok
+                        txtMsg := msg.Data.(map[string]interface{})
+                        SendMessage(int(txtMsg["dest"].(float64)), msg)
                 }
 
                 //SendMessage(msg.Dest, msg)
@@ -111,6 +218,7 @@ func findOtherId(id int) int {
         return -1
 }
 
+/*
 func Listener() {
         for {
                 msg := <-broadcast
@@ -120,7 +228,6 @@ func Listener() {
         }
 }
 
-/*
 func SendBroadcast(msg Message) {
         for client := range clients {
                 err := client.WriteJSON(msg)
@@ -148,8 +255,7 @@ func main() {
         // Create websocket route to callback
         http.HandleFunc("/ws", handleNewConn)
 
-        // Listener
-        go Listener()
+        // go Listener()
 
         // Start http server
         log.Println("Started http listener on :" + strconv.Itoa(port))
