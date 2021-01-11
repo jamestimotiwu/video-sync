@@ -6,12 +6,9 @@ import (
         "github.com/gorilla/websocket"
         "github.com/speps/go-hashids"
         "strconv"
-        //"encoding/json"
 )
 
 var (
-        //clients = make(map[*websocket.Conn]bool)
-        //broadcast = make(chan Message)
         upgrader = websocket.Upgrader{}
         clientIdCount = 0
         sessionIdCount = 0
@@ -36,14 +33,6 @@ type Peer struct {
         inSession bool
         conn *websocket.Conn
 }
-
-/*
-type Message struct {
-        Type string `json:"type"`
-        Src int `json:"src"`
-        Dest int `json:"dest"`
-        Message string `json:"message"`
-}*/
 
 type TextMessage struct {
         Src int `json:"src"`
@@ -217,26 +206,6 @@ func findOtherId(id int) int {
         }
         return -1
 }
-
-/*
-func Listener() {
-        for {
-                msg := <-broadcast
-                // Send message to all clients/broadcast
-                log.Println(msg)
-                //SendBroadcast(msg)
-        }
-}
-
-func SendBroadcast(msg Message) {
-        for client := range clients {
-                err := client.WriteJSON(msg)
-                if err != nil {
-                        log.Printf("err!")
-                        break
-                }
-        }
-}*/
 
 func SendMessage(destId int, msg Message) {
         log.Printf("sent message to %d", destId)
