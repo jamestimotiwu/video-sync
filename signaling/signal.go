@@ -56,7 +56,7 @@ func getNextSessionId() string {
         sessionIdCount += 1
         hd := hashids.NewData()
         hd.Salt = "sharedSession"
-        hd.MinLength = 30
+        hd.MinLength = 8
         h, _ := hashids.NewWithData(hd)
         e, _ := h.Encode([]int{sessionIdCount})
         return e
