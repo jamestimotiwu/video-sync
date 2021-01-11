@@ -29,7 +29,9 @@ type Peer struct {
 }
 
 type Message struct {
-        UserId string `json:"user_id"`
+        Type string `json:"type"`
+        Src int `json:"src"`
+        Dest int `json:"dest"`
         Message string `json:"message"`
 }
 
@@ -57,7 +59,7 @@ func handleNewConn(w http.ResponseWriter, r *http.Request) {
         // Add ws client to client list
         peer := NewPeer(ws)
         //clients[ws] = true
-        peers[peer.id] = peer
+        peers[peer.Id] = peer
 
         // Listen to messages
         for {
@@ -70,9 +72,18 @@ func handleNewConn(w http.ResponseWriter, r *http.Request) {
                         break
                 }
 
-                log.Println(peers)
+                SendMessage(msg.Dest, msg)
                 // Send message to handler/listener
-                broadcast <- msg
+                //broadcast <- msg
+        }
+}
+
+// Find other id not current peer
+func findOtherId(id) int {
+        for k := range peers {
+                if k != id {
+                        return k;
+                }
         }
 }
 
@@ -85,13 +96,22 @@ func Listener() {
         }
 }
 
+/*
 func SendBroadcast(msg Message) {
         for client := range clients {
                 err := client.WriteJSON(msg)
                 if err != nil {
-                        log.Printf("err!");
+                        log.Printf("err!")
                         break
                 }
+        }
+}*/
+
+func SendMessage(destId int, msg Message) {
+        log.Printf("sent message to %d", destId)
+        err := peers[destId].conn.WriteJSON(msg)
+        if err != nil {
+                log.Printf("send fail!")
         }
 }
 

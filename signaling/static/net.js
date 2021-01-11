@@ -22,7 +22,8 @@ function initWebSocket() {
 function sendMessage() {
         var message = "test"
         var newMessage = {
-                user_id: "bleh",
+                src: 1,
+                dest: 1,
                 message: message,
         }
         // Send message on websocket
