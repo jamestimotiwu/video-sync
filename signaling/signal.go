@@ -67,24 +67,48 @@ func handleNewConn(w http.ResponseWriter, r *http.Request) {
                 err := ws.ReadJSON(&msg)
                 // If err client may have disconnected
                 if err != nil {
-                        log.Printf("err!");
+                        log.Println(err);
                         delete(clients, ws)
                         break
                 }
 
-                SendMessage(msg.Dest, msg)
+                switch msg.Type {
+                case "create":
+                        newMsg := Message{
+                                Type: "createResp",
+                                Src: peer.Id,
+                                Dest: 0,
+                                Message: "",
+                        }
+                        SendMessage(peer.Id, newMsg)
+                case "join":
+                        // Add peer to the other peer
+                        otherId := findOtherId(peer.Id)
+                        newMsg := Message{
+                                Type: "joinResp",
+                                Src: peer.Id,
+                                Dest: otherId,
+                                Message: "",
+                        }
+                        SendMessage(peer.Id, newMsg)
+                case "rtc":
+                        SendMessage(msg.Dest, msg)
+                }
+
+                //SendMessage(msg.Dest, msg)
                 // Send message to handler/listener
                 //broadcast <- msg
         }
 }
 
 // Find other id not current peer
-func findOtherId(id) int {
+func findOtherId(id int) int {
         for k := range peers {
                 if k != id {
-                        return k;
+                        return k
                 }
         }
+        return -1
 }
 
 func Listener() {

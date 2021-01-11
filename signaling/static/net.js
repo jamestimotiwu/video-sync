@@ -5,6 +5,8 @@ const messageButton = document.getElementById('btn');
 const createButton = document.getElementById('create-btn');
 const joinButton = document.getElementById('join-btn');
 const port = "9000";
+var myId = -1;
+var currPeer = null;
 
 function initWebSocket() {
         // Create websocket
@@ -15,9 +17,26 @@ function initWebSocket() {
                 // Parse data into object
                 var msg = JSON.parse(e.data);
 
-                const messageItem = document.createElement('div');
+                /*const messageItem = document.createElement('div');
                 messageItem.innerHTML = msg.message;
-                messageBox.appendChild(messageItem);
+                messageBox.appendChild(messageItem);*/
+
+                switch (msg.type) {
+                        case "createResp":
+                                // Set id of self
+                                console.log("create new", msg.src)
+                                myId = msg.src;
+                                break;
+                        case "joinResp":
+                                console.log("join as", msg.src)
+                                if(myId == -1) myId = msg.src;
+                                handleNewJoin(msg.dest, true);
+                                break;
+                        case "rtc":
+                                console.log("send rtc from", msg.src)
+                                handleRtc(msg);
+                                break;
+                }
         });
 }
 
@@ -51,6 +70,34 @@ function joinMessage() {
                 message: "",
         }
         ws.send(JSON.stringify(newMessage));
+}
+
+// id -> id to connect peer with
+function handleNewJoin(id, initiator) {
+        currPeer = new SimplePeer({initiator: initiator, trickle: false})
+        // Offer initiated upon creation of object
+        currPeer.on('signal', (data) => {
+                var newMessage = {
+                        type: "rtc",
+                        src: myId,
+                        dest: id,
+                        message: JSON.stringify(data),
+                }
+                // Send to relay to peer id
+                ws.send(JSON.stringify(newMessage));
+        });
+        currPeer.on('connect', () => {
+                console.log("connected!");
+        });
+}
+
+function handleRtc(msg) {
+        if(currPeer == null) {
+                // Create new SimplePeer and send to id where it came from
+                handleNewJoin(msg.src, false)
+        }
+        console.log(msg.message);
+        currPeer.signal(msg.message);
 }
 
 initWebSocket();
