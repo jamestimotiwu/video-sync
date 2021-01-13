@@ -160,13 +160,17 @@ func handleNewConn(w http.ResponseWriter, r *http.Request) {
         if err != nil {
                 log.Fatal(err)
         }
-        // Close connection
-        defer ws.Close()
 
         // Add ws client to client list
         //clients[ws] = true
         peer := NewPeer(ws)
         peers[peer.Id] = peer
+        // Close connection
+        defer func() {
+                ws.Close()
+                // Remove peer if exists
+                delete(peers, peer.Id);
+        }()
 
         // Listen to messages
         for {
