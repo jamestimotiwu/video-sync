@@ -218,7 +218,7 @@ class Peer {
     this.p.send(JSON.stringify(meta));
     this.producer = new FileProducer(
       file,
-      (data) => { this.p.send(data) },
+      (data) => { this.p.write(data) },
       () => { this.producer = null }
     );
   }
@@ -229,6 +229,7 @@ class Peer {
     const video = document.createElement('video');
     video.muted = true;
     video.autoplay = true;
+    video.controls = true;
     video.src = URL.createObjectURL(blob);
     video.play();
     document.body.appendChild(video);
@@ -256,7 +257,6 @@ class FileProducer {
   }
 
   onChunkLoad(chunk) {
-    console.log("new chunk at");
     this.offset += chunk.byteLength;
     // TODO: Send chunk
     this.send(chunk);
@@ -282,7 +282,6 @@ class FileConsumer {
   }
 
   getChunk(chunk) {
-    console.log("recv chunk at");
     this.buffer.push(chunk)
     this.numBytes += chunk.byteLength;
     if(this.numBytes < this.size) return; // get more data
