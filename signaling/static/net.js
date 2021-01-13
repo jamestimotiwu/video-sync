@@ -38,11 +38,15 @@ function initWebSocket() {
         // Set location hash
         location.hash = msg.data.session_id;
         sessionBox.value = msg.data.session_id;
+        addPeerToDisplay(myId);
         break;
 
       case "joinResp":
         console.log("join as", msg.data.id)
-        if(myId == -1) myId = msg.data.id;
+        if(myId == -1) {
+          myId = msg.data.id;
+          addPeerToDisplay(myId);
+        }
         handleJoinSession(msg.data.peers) 
         break;
 
@@ -59,6 +63,33 @@ function initWebSocket() {
   });
 }
 
+// Peer display functions
+function addPeerToDisplay(peerId) {
+  console.log("try add peer to display")
+  var peerBox = document.getElementById('peer-box');
+  if(peerBox === null) {
+    // create peer box
+    peerBox = document.createElement('div')
+    peerBox.id = 'peer-box';
+    peerBox.style.maxWidth = '300px';
+    peerBox.style.border = '1px solid #000';
+    document.body.appendChild(peerBox);
+  }
+  const liItem = document.createElement('li');
+  liItem.id = 'peer-'+peerId;
+  liItem.appendChild(document.createTextNode('Peer '+peerId));
+  peerBox.appendChild(liItem);
+}
+
+function removePeerFromDisplay(peerId) {
+  const peerBox = document.getElementById('peer-box');
+  if(peerBox === null) {
+    return;
+  }
+  peerBox.removeChild(document.getElementById('peer-'+peerId));
+}
+
+// Rtc signaling functions
 function sendMessage() {
         var message = "test"
         var newMessage = {
@@ -179,7 +210,8 @@ class Peer {
       ws.send(JSON.stringify(newMessage));
     });
     this.p.on('connect', () => {
-      console.log(id + " connected!");
+      addPeerToDisplay(this.id);
+      console.log(this.id + " connected!");
     });
     this.p.on('data', (data) => {
       this.handleData(data)
@@ -187,6 +219,7 @@ class Peer {
 
     this.p.on('close', () => {
       console.log("peer " + this.id + "closed connection");
+      removePeerFromDisplay(this.id);
       delete peers[id]
     });
 
