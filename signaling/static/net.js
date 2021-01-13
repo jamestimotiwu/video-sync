@@ -177,7 +177,9 @@ class Peer {
     });
     this.consumer = null;
     this.producer = null;
-    this.once = false
+
+    // Media controls
+    this.video = null;
   }
 
   // WebRTC data channel multiplexer/listener
@@ -189,7 +191,7 @@ class Peer {
     }
     // Parse JSON
     const msg = JSON.parse(data);
-    console.log(msg);
+    //console.log(msg);
     switch(msg.type) {
       case 'file-meta':
         this.consumer = new FileConsumer(
@@ -200,6 +202,8 @@ class Peer {
           },
         );
         break;
+      case 'video':
+        this.handleVideoAction(msg.data);
       default:
         break;
     }
@@ -219,20 +223,40 @@ class Peer {
     this.producer = new FileProducer(
       file,
       (data) => { this.p.write(data) },
-      () => { this.producer = null }
+      () => {
+        // Create local video
+        this.video = new VideoSync(
+          URL.createObjectURL(file),
+          (data) => { this.p.send(data) }
+        );
+        this.producer = null 
+      }
     );
   }
 
   handleBlob(blob) {
     console.log("file received");
-    console.log(blob);
-    const video = document.createElement('video');
-    video.muted = true;
-    video.autoplay = true;
-    video.controls = true;
-    video.src = URL.createObjectURL(blob);
-    video.play();
-    document.body.appendChild(video);
+    //console.log(blob);
+    this.video = new VideoSync(
+      URL.createObjectURL(blob),
+      (data) => { this.p.send(data) }
+    );
+  }
+
+  handleVideoAction(msg) {
+    switch(msg.action) {
+      case 'seeked':
+        this.video.remoteSeek(msg.time);
+        break;
+      case 'play':
+        this.video.remotePlay();
+        break;
+      case 'pause':
+        this.video.remotePause();
+        break;
+      case 'default':
+        break;
+    }
   }
 }
 
@@ -278,7 +302,7 @@ class FileConsumer {
     this.buffer = [];
     this.numBytes = 0;
     this.handleBlob = stopCallback;
-    console.log(this)
+    //console.log(this)
   }
 
   getChunk(chunk) {
@@ -296,6 +320,72 @@ class FileConsumer {
     );
     this.handleBlob(blob);
   }
+}
+
+class VideoSync {
+  constructor(url, sendCallback) {
+    this.send = sendCallback;
+    this.video = document.createElement('video');
+    //this.video.muted = true;
+    //this.video.autoplay = true;
+    this.video.controls = true;
+    this.video.src = url;
+    // Pass reference or else func will be invoked immediately
+    this.video.addEventListener('seeked', () => { this.handleSeek(this.video.currentTime) });
+    this.video.addEventListener('play', () => { this.handlePlay(true) });
+    this.video.addEventListener('pause', () => { this.handlePlay(false) });
+    //this.video.play();
+    this.isRemote = false;
+    document.body.appendChild(this.video);
+  }
+
+  remoteSeek(time) {
+    this.isRemote = true;
+    this.video.currentTime = time;
+  }
+
+  remotePlay() {
+    this.isRemote = true;
+    this.video.play();
+  }
+
+  remotePause() {
+    this.isRemote = true;
+    this.video.pause();
+  }
+
+  handleSeek(time) {
+    // Check if seeking was handled remotely so it doesn't fire twice
+    if(this.isRemote) {
+      this.isRemote = false;
+      return;
+    }
+    const msg = {
+      type: "video",
+      data: {
+        action: "seeked",
+        time: time,
+      },
+    }
+    console.log("sending seek", Date.now());
+    this.send(JSON.stringify(msg));
+  }
+
+  handlePlay(play) {
+    if(this.isRemote) {
+      this.isRemote = false;
+      return;
+    }
+    const msg = {
+      type: "video",
+      data: {
+        action: play ? "play" : "pause",
+      },
+    }
+    console.log("sending play/pause", Date.now())
+    this.send(JSON.stringify(msg));
+  }
+
 }
 
 
