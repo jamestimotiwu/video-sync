@@ -175,6 +175,15 @@ class Peer {
     this.p.on('data', (data) => {
       this.handleData(data)
     });
+
+    this.p.on('close', () => {
+      console.log("peer " + this.id + "closed connection");
+      delete peers[id]
+    });
+
+    this.p.on('error', (err) => {
+      console.log(err);
+    });
     this.consumer = null;
     this.producer = null;
 
