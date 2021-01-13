@@ -16,6 +16,10 @@ var myId = -1;
 var peers = [];
 
 function initWebSocket() {
+  if(ws !== null) {
+    console.log("Already connected to signaling server!")
+    return;
+  }
   // Create websocket
   ws = new WebSocket('ws://' + location.host +  '/ws');
 
@@ -315,7 +319,7 @@ class Peer {
 class FileProducer {
   constructor(file, sendCallback, stopCallback) {
     this.file = file;
-    this.chunkSize = 64 * KB;
+    this.chunkSize = 16 * KB;
     this.offset = 0;
     this.send = sendCallback;
     this.stop = stopCallback;
