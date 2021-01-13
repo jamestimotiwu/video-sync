@@ -1,10 +1,15 @@
 var ws = null;
 
+// Native constants
+const KB = 1 << 10;
+
+// Elements
 const messageBox = document.getElementById('messages');
 const messageButton = document.getElementById('btn');
 const createButton = document.getElementById('create-btn');
 const joinButton = document.getElementById('join-btn');
 const sessionBox = document.getElementById('session-box');
+const upload = document.getElementById('upload');
 const port = "9000";
 var myId = -1;
 //var currPeer = null;
@@ -100,28 +105,14 @@ function handleJoinSession(ids) {
 // id -> id to connect peer with
 function handleNewJoin(id, initiator) {
         console.log("peer "+id+" has joined")
-        currPeer = new SimplePeer({initiator: initiator, trickle: false})
-        // Offer initiated upon creation of object
-        currPeer.on('signal', (data) => {
-                var newMessage = {
-                        type: "rtc",
-                        data: {
-                                src: myId,
-                                dest: id,
-                                message: JSON.stringify(data),
-                        }
-                }
-                // Send to relay to peer id
-                ws.send(JSON.stringify(newMessage));
-        });
-        currPeer.on('connect', () => {
-                console.log("connected!");
-        });
-        // Add to peer list
-        peers[id] = {
-                id: id,
-                p: currPeer,
+        // Simple peer opts
+        let opts = {
+          initiator: initiator, 
+          trickle: false,
+          objectMode: true,
         }
+        // Add to peer list
+        peers[id] = new Peer(id, opts);
 }
 
 function handleRtc(msg) {
@@ -134,14 +125,186 @@ function handleRtc(msg) {
         peers[srcId].p.signal(msg.data.message);
 }
 
+// TODO: test send files to all connected peers
+function sendFileToAll(file) {
+  for(var i in peers) {
+    console.log(peers);
+    peers[i].sendFile(file);
+  }
+}
+
 messageButton.addEventListener('click', (e) => {
-        sendMessage();
+  sendMessage();
 });
 
 createButton.addEventListener('click', (e) => {
-        createMessage();
+  createMessage();
 });
 
 joinButton.addEventListener('click', (e) => {
-        joinMessage();
+  joinMessage();
 });
+
+upload.addEventListener('change', (e) => {
+  for(const file of upload.files) {
+    sendFileToAll(file);
+  }
+});
+
+// Peer object
+class Peer {
+  constructor(id, opts) {
+    this.id = id;
+    this.p = new SimplePeer(opts);
+    // Offer initiated upon creation of object
+    this.p.on('signal', (data) => {
+      var newMessage = {
+              type: "rtc",
+              data: {
+                      src: myId,
+                      dest: id,
+                      message: JSON.stringify(data),
+              }
+      }
+      // Send to relay to peer id with signaling ws
+      ws.send(JSON.stringify(newMessage));
+    });
+    this.p.on('connect', () => {
+      console.log(id + " connected!");
+    });
+    this.p.on('data', (data) => {
+      this.handleData(data)
+    });
+    this.consumer = null;
+    this.producer = null;
+    this.once = false
+  }
+
+  // WebRTC data channel multiplexer/listener
+  handleData(data) {
+    if(typeof data !== 'string') {
+      // Check if file transfer in session
+      if(this.consumer !== null) this.consumer.getChunk(data)
+      return;
+    }
+    // Parse JSON
+    const msg = JSON.parse(data);
+    console.log(msg);
+    switch(msg.type) {
+      case 'file-meta':
+        this.consumer = new FileConsumer(
+          msg.data,
+          (blob) => {
+            this.handleBlob(blob)
+            this.consumer = null; // destructor after finished file consuming
+          },
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
+  sendFile(file) {
+    // Send file metadata
+    const meta = {
+      type: 'file-meta',
+      data: {
+        filename: file.name,
+        filetype: file.type,
+        size: file.size,
+      },
+    }
+    this.p.send(JSON.stringify(meta));
+    this.producer = new FileProducer(
+      file,
+      (data) => { this.p.send(data) },
+      () => { this.producer = null }
+    );
+  }
+
+  handleBlob(blob) {
+    console.log("file received");
+    console.log(blob);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.autoplay = true;
+    video.src = URL.createObjectURL(blob);
+    video.play();
+    document.body.appendChild(video);
+  }
+}
+
+/** file transfer **/
+class FileProducer {
+  constructor(file, sendCallback, stopCallback) {
+    this.file = file;
+    this.chunkSize = 64 * KB;
+    this.offset = 0;
+    this.send = sendCallback;
+    this.stop = stopCallback;
+    this.reader = new FileReader();
+    this.reader.addEventListener('load', (e) => {
+      this.onChunkLoad(e.target.result)
+    });
+    this.getNextChunk();
+  }
+
+  getNextChunk() {
+    const chunk = this.file.slice(this.offset, this.offset + this.chunkSize);
+    this.reader.readAsArrayBuffer(chunk)
+  }
+
+  onChunkLoad(chunk) {
+    console.log("new chunk at");
+    this.offset += chunk.byteLength;
+    // TODO: Send chunk
+    this.send(chunk);
+    if(this.offset >= this.file.size) {
+      console.log("finish upload");
+      this.stop();
+      return
+    }
+    // callback readChunk()
+    this.getNextChunk()
+  }
+}
+
+class FileConsumer {
+  constructor(metadata, stopCallback) {
+    this.filename = metadata.filename;
+    this.size = metadata.size;
+    this.type = metadata.filetype;
+    this.buffer = [];
+    this.numBytes = 0;
+    this.handleBlob = stopCallback;
+    console.log(this)
+  }
+
+  getChunk(chunk) {
+    console.log("recv chunk at");
+    this.buffer.push(chunk)
+    this.numBytes += chunk.byteLength;
+    if(this.numBytes < this.size) return; // get more data
+    console.log("finish consume");
+    this.saveFile();
+  }
+
+  saveFile() {
+    let blob = new Blob(
+      this.buffer, 
+      {type: this.type}
+    );
+    this.handleBlob(blob);
+  }
+}
+
+
+
+
+
+
+
+
+
+
