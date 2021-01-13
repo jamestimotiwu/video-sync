@@ -16,40 +16,47 @@ var myId = -1;
 var peers = [];
 
 function initWebSocket() {
-        // Create websocket
-        ws = new WebSocket('ws://' + location.host +  '/ws');
+  // Create websocket
+  ws = new WebSocket('ws://' + location.host +  '/ws');
 
-        // Listen to websocket messages
-        ws.addEventListener('message', (e) => {
-                // Parse data into object
-                var msg = JSON.parse(e.data);
+  // Listen to websocket messages
+  ws.addEventListener('message', (e) => {
+    // Parse data into object
+    var msg = JSON.parse(e.data);
 
-                /*const messageItem = document.createElement('div');
-                messageItem.innerHTML = msg.message;
-                messageBox.appendChild(messageItem);*/
+    /*const messageItem = document.createElement('div');
+    messageItem.innerHTML = msg.message;
+    messageBox.appendChild(messageItem);*/
 
-                switch (msg.type) {
-                        case "createResp":
-                                console.log(msg)
-                                // Set id of self
-                                console.log("create new", msg.data.id)
-                                console.log("session id: ", msg.data.session_id)
-                                myId = msg.data.id;
-                                break;
-                        case "joinResp":
-                                console.log("join as", msg.data.id)
-                                if(myId == -1) myId = msg.data.id;
-                                handleJoinSession(msg.data.peers) 
-                                break;
-                        case "rtc":
-                                console.log("send rtc from", msg.data.src)
-                                handleRtc(msg);
-                                break;
-                        case "error":
-                                console.log(msg.data.message);
-                                break;
-                }
-        });
+    switch (msg.type) {
+      case "createResp":
+        console.log(msg)
+        // Set id of self
+        console.log("create new", msg.data.id)
+        console.log("session id: ", msg.data.session_id)
+        myId = msg.data.id;
+        // Set location hash
+        location.hash = msg.data.session_id;
+        sessionBox.value = msg.data.session_id;
+        break;
+
+      case "joinResp":
+        console.log("join as", msg.data.id)
+        if(myId == -1) myId = msg.data.id;
+        handleJoinSession(msg.data.peers) 
+        break;
+
+      case "rtc":
+        console.log("send rtc from", msg.data.src)
+        handleRtc(msg);
+        break;
+
+      case "error":
+        console.log(msg.data.message);
+        break;
+
+    }
+  });
 }
 
 function sendMessage() {
@@ -79,6 +86,8 @@ function createMessage() {
 }
 
 function joinMessage() {
+        // Set location hash
+        location.hash = sessionBox.value;
         // Connect to signaling serve
         initWebSocket();
         var newMessage = {
